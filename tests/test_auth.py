@@ -1,6 +1,11 @@
+
 from sqlalchemy import select
 
-from app.core.security import hash_password, verify_password
+from app.core.security import (
+    create_access_token,
+    hash_password,
+    verify_password,
+)
 from app.models import User
 
 
@@ -56,6 +61,22 @@ def test_register_rejects_short_password(ticket_client) -> None:
             "name": "Novo Usuário",
             "email": "short-password@example.com",
             "password": "curta",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_register_rejects_client_supplied_role(ticket_client) -> None:
+    client, _, _ = ticket_client
+
+    response = client.post(
+        "/auth/register",
+        json={
+            "name": "Usuário Tentando Elevar Privilégios",
+            "email": "privilege-escalation@example.com",
+            "password": "Senha-Forte-De-Teste-938!",
+            "role": "admin",
         },
     )
 
@@ -150,6 +171,37 @@ def test_login_rejects_inactive_account(ticket_client) -> None:
 def test_me_rejects_missing_token(ticket_client) -> None:
     client, _, _ = ticket_client
     client.headers.pop("Authorization", None)
+
+    response = client.get("/auth/me")
+
+    assert response.status_code == 401
+
+
+def test_me_rejects_malformed_token(ticket_client) -> None:
+    client, _, _ = ticket_client
+    client.headers.update(
+        {"Authorization": "Bearer token-invalido"}
+    )
+
+    response = client.get("/auth/me")
+
+    assert response.status_code == 401
+
+
+def test_me_rejects_token_with_non_numeric_subject(ticket_client) -> None:
+    client, _, _ = ticket_client
+    token = create_access_token(subject="usuario-invalido")
+    client.headers.update({"Authorization": f"Bearer {token}"})
+
+    response = client.get("/auth/me")
+
+    assert response.status_code == 401
+
+
+def test_me_rejects_token_for_nonexistent_user(ticket_client) -> None:
+    client, _, _ = ticket_client
+    token = create_access_token(subject="999999")
+    client.headers.update({"Authorization": f"Bearer {token}"})
 
     response = client.get("/auth/me")
 
