@@ -9,7 +9,13 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user
 from app.core.database import get_db
 from app.models import Ticket, TicketHistory, User
-from app.schemas.ticket import TicketCreate, TicketRead, TicketUpdate
+from app.schemas.ticket import (
+    TicketCreate,
+    TicketPriority,
+    TicketRead,
+    TicketStatus,
+    TicketUpdate,
+)
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
@@ -52,6 +58,11 @@ def list_tickets(
     db: Annotated[Session, Depends(get_db)],
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
+    ticket_status: TicketStatus | None = Query(
+        default=None,
+        alias="status",
+    ),
+    priority: TicketPriority | None = Query(default=None),
 ) -> list[Ticket]:
     statement = select(Ticket)
 
@@ -59,6 +70,12 @@ def list_tickets(
         statement = statement.where(
             Ticket.requester_id == current_user.id,
         )
+
+    if ticket_status is not None:
+        statement = statement.where(Ticket.status == ticket_status)
+
+    if priority is not None:
+        statement = statement.where(Ticket.priority == priority)
 
     statement = (
         statement
