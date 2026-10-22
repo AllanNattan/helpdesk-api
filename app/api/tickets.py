@@ -16,6 +16,7 @@ from app.schemas.ticket import (
     TicketStatus,
     TicketUpdate,
 )
+from app.schemas.ticket_history import TicketHistoryRead
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
@@ -103,6 +104,37 @@ def get_ticket(
 
     ensure_ticket_access(ticket, current_user)
     return ticket
+
+
+@router.get(
+    "/{ticket_id}/history",
+    response_model=list[TicketHistoryRead],
+)
+def get_ticket_history(
+    ticket_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[TicketHistory]:
+    ticket = db.get(Ticket, ticket_id)
+
+    if ticket is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chamado não encontrado.",
+        )
+
+    ensure_ticket_access(ticket, current_user)
+
+    statement = (
+        select(TicketHistory)
+        .where(TicketHistory.ticket_id == ticket_id)
+        .order_by(
+            TicketHistory.created_at.asc(),
+            TicketHistory.id.asc(),
+        )
+    )
+
+    return list(db.scalars(statement).all())
 
 
 @router.patch("/{ticket_id}", response_model=TicketRead)
