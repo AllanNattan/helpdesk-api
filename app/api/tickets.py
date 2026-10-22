@@ -1,3 +1,4 @@
+
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -8,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.core.database import get_db
-from app.models import Ticket, TicketHistory, User
+from app.models import Ticket, TicketComment, TicketHistory, User
 from app.schemas.ticket import (
     TicketCreate,
     TicketPriority,
@@ -16,6 +17,7 @@ from app.schemas.ticket import (
     TicketStatus,
     TicketUpdate,
 )
+from app.schemas.ticket_comment import TicketCommentCreate, TicketCommentRead
 from app.schemas.ticket_history import TicketHistoryRead
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
@@ -104,6 +106,79 @@ def get_ticket(
 
     ensure_ticket_access(ticket, current_user)
     return ticket
+
+
+@router.get(
+    "/{ticket_id}/comments",
+    response_model=list[TicketCommentRead],
+)
+def get_ticket_comments(
+    ticket_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[TicketComment]:
+    ticket = db.get(Ticket, ticket_id)
+
+    if ticket is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chamado não encontrado.",
+        )
+
+    ensure_ticket_access(ticket, current_user)
+
+    statement = (
+        select(TicketComment)
+        .where(TicketComment.ticket_id == ticket_id)
+        .order_by(
+            TicketComment.created_at.asc(),
+            TicketComment.id.asc(),
+        )
+    )
+
+    return list(db.scalars(statement).all())
+
+
+@router.post(
+    "/{ticket_id}/comments",
+    response_model=TicketCommentRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_ticket_comment(
+    ticket_id: int,
+    comment_data: TicketCommentCreate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> TicketComment:
+    ticket = db.get(Ticket, ticket_id)
+
+    if ticket is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chamado não encontrado.",
+        )
+
+    ensure_ticket_access(ticket, current_user)
+
+    comment = TicketComment(
+        ticket_id=ticket.id,
+        author_id=current_user.id,
+        content=comment_data.content,
+    )
+    db.add(comment)
+
+    try:
+        db.commit()
+        db.refresh(comment)
+
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Não foi possível salvar o comentário.",
+        ) from exc
+
+    return comment
 
 
 @router.get(

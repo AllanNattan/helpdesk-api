@@ -1,7 +1,8 @@
+
 from sqlalchemy.orm import configure_mappers
 
 from app.core.database import Base
-from app.models import Ticket, TicketHistory, User
+from app.models import Ticket, TicketComment, TicketHistory, User
 
 
 def test_all_models_are_registered() -> None:
@@ -9,6 +10,7 @@ def test_all_models_are_registered() -> None:
         "users",
         "tickets",
         "ticket_history",
+        "ticket_comments",
     }
 
 
@@ -55,6 +57,18 @@ def test_history_foreign_keys_have_expected_delete_rules() -> None:
     assert ticket_fk.ondelete == "CASCADE"
     assert changed_by_fk.target_fullname == "users.id"
     assert changed_by_fk.ondelete == "SET NULL"
+
+
+def test_comment_foreign_keys_have_expected_delete_rules() -> None:
+    comments = TicketComment.__table__
+
+    ticket_fk = next(iter(comments.c.ticket_id.foreign_keys))
+    author_fk = next(iter(comments.c.author_id.foreign_keys))
+
+    assert ticket_fk.target_fullname == "tickets.id"
+    assert ticket_fk.ondelete == "CASCADE"
+    assert author_fk.target_fullname == "users.id"
+    assert author_fk.ondelete == "SET NULL"
 
 
 def test_model_relationships_are_valid() -> None:
