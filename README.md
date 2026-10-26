@@ -16,6 +16,8 @@ API REST para gerenciamento corporativo de chamados de suporte técnico, com aut
 - Ruff
 - JWT
 - Argon2
+- Docker
+- Docker Compose
 - Git e GitHub
 - GitHub Actions
 
@@ -38,15 +40,21 @@ API REST para gerenciamento corporativo de chamados de suporte técnico, com aut
 - Migrações versionadas do banco de dados.
 - Testes automatizados com Pytest.
 - Verificação de qualidade do código com Ruff.
+- Execução conteinerizada com Docker e PostgreSQL.
 - Integração contínua com GitHub Actions.
 
 ## Requisitos
 
-Antes de executar o projeto, você precisa ter instalado:
+Para executar o projeto localmente:
 
 - Python 3.12.
 - Git.
 - PostgreSQL.
+
+Para executar com Docker:
+
+- Docker Engine.
+- Docker Compose v2.
 
 ## Instalação
 
@@ -105,7 +113,124 @@ Copie o resultado para a variável `JWT_SECRET_KEY` no arquivo `.env`.
 
 **Segurança:** nunca publique o arquivo `.env`, senhas, tokens ou outras credenciais no GitHub.
 
-## Configuração do PostgreSQL
+## Executar com Docker
+
+O Docker Compose inicia a API e um servidor PostgreSQL em contêineres separados. O banco utilizado nesse ambiente é independente de uma instalação local do PostgreSQL.
+
+### 1. Configurar as variáveis de ambiente
+
+Se ainda não existir um arquivo `.env`, crie-o a partir do modelo:
+
+```bash
+cp .env.example .env
+```
+
+Edite o arquivo e configure, no mínimo:
+
+- `DATABASE_PASSWORD`: senha do usuário do PostgreSQL.
+- `JWT_SECRET_KEY`: chave aleatória de pelo menos 32 caracteres.
+
+Substitua os valores de exemplo antes de iniciar os serviços.
+
+O Compose usa essas variáveis para configurar o PostgreSQL. Dentro do contêiner da API, `DATABASE_HOST` e `DATABASE_PORT` são configurados para acessar o banco pela rede interna do Compose.
+
+Não é necessário alterar o endereço do banco local no arquivo `.env` para utilizar o Docker Compose.
+
+### 2. Construir a imagem e iniciar os serviços
+
+Na raiz do projeto, execute:
+
+```bash
+docker compose up -d --build
+```
+
+Se sua instalação exigir privilégios administrativos, use `sudo docker compose` no lugar de `docker compose`.
+
+O Compose inicia o PostgreSQL e aguarda o banco ficar saudável antes de iniciar a API.
+
+A aplicação executa `alembic upgrade head` antes de iniciar o Uvicorn. Assim, as migrações pendentes são aplicadas na inicialização do contêiner da API.
+
+### 3. Verificar os serviços
+
+Consulte o estado dos contêineres:
+
+```bash
+docker compose ps
+```
+
+Consulte os logs da aplicação:
+
+```bash
+docker compose logs --tail=80 api
+```
+
+Verifique a saúde da API:
+
+```bash
+curl -i http://127.0.0.1:8000/health
+```
+
+A resposta esperada é HTTP `200 OK`, com o seguinte conteúdo:
+
+```json
+{
+  "status": "ok"
+}
+```
+
+Para consultar a revisão do banco aplicada no contêiner:
+
+```bash
+docker compose exec api python -m alembic current
+```
+
+### 4. Acessar a API
+
+A API fica disponível localmente em:
+
+http://127.0.0.1:8000
+
+Documentação interativa:
+
+http://127.0.0.1:8000/docs
+
+Especificação OpenAPI:
+
+http://127.0.0.1:8000/openapi.json
+
+A porta é publicada no endereço `127.0.0.1`, evitando a exposição direta da API a outras máquinas da rede.
+
+### 5. Consultar logs em tempo real
+
+Para acompanhar os logs da API:
+
+```bash
+docker compose logs -f api
+```
+
+Pressione `Ctrl+C` para encerrar o acompanhamento dos logs. Isso não encerra os contêineres.
+
+### 6. Encerrar os serviços
+
+Para parar e remover os contêineres e a rede criada pelo Compose:
+
+```bash
+docker compose down
+```
+
+O volume `postgres_data` é preservado, mantendo os dados do PostgreSQL para a próxima inicialização.
+
+**Atenção:** o comando abaixo remove também os volumes do projeto, incluindo os dados persistidos do PostgreSQL:
+
+```bash
+docker compose down -v
+```
+
+Não execute esse comando quando precisar preservar os dados do banco.
+
+## Configuração do PostgreSQL local
+
+Esta seção é necessária apenas para executar a aplicação sem Docker.
 
 O projeto utiliza, por padrão, o banco `helpdesk_db` e o usuário `helpdesk_app`.
 
@@ -133,7 +258,9 @@ Se o usuário e o banco já existirem, não execute novamente os comandos de cri
 
 O projeto utiliza Alembic para versionar as alterações da estrutura do banco.
 
-Depois de configurar o PostgreSQL e as variáveis de ambiente, aplique as migrações:
+### Execução local
+
+Depois de configurar o PostgreSQL local e as variáveis de ambiente, aplique as migrações:
 
 ```bash
 python -m alembic upgrade head
@@ -145,11 +272,19 @@ Para consultar a revisão aplicada:
 python -m alembic current
 ```
 
+### Execução com Docker
+
+As migrações pendentes são aplicadas automaticamente quando a API inicia. Para consultar a revisão dentro do contêiner:
+
+```bash
+docker compose exec api python -m alembic current
+```
+
 As migrações ficam no diretório `migrations/versions/`.
 
-## Executar a API
+## Executar a API localmente
 
-Com o ambiente virtual ativado e o banco de dados configurado, inicie o servidor:
+Com o ambiente virtual ativado e o banco de dados local configurado, inicie o servidor:
 
 ```bash
 python -m uvicorn app.main:app --reload
@@ -172,6 +307,14 @@ Para encerrar o servidor, pressione `Ctrl+C` no terminal em que ele está rodand
 ## Endpoints
 
 Todas as rotas de autenticação e gerenciamento de chamados devem ser utilizadas de acordo com os requisitos de autenticação e autorização definidos pela aplicação.
+
+### Autenticação
+
+| Método | Endpoint | Descrição |
+|---|---|---|
+| `POST` | `/auth/register` | Cadastra um usuário |
+| `POST` | `/auth/login` | Autentica um usuário |
+| `GET` | `/auth/me` | Consulta o usuário autenticado |
 
 ### Chamados
 
@@ -365,12 +508,15 @@ helpdesk-api/
 │   └── versions/
 ├── scripts/
 ├── tests/
+├── .dockerignore
 ├── .env.example
 ├── alembic.ini
+├── compose.yml
+├── Dockerfile
 ├── pyproject.toml
 └── README.md
 ```
 
 ## Status do projeto
 
-Projeto em desenvolvimento, com autenticação, controle de acesso, gerenciamento de chamados, filtros, paginação, histórico de alterações, comentários, migrações de banco de dados, testes automatizados e integração contínua.
+Projeto em desenvolvimento, com autenticação, controle de acesso, gerenciamento de chamados, filtros, paginação, histórico de alterações, comentários, migrações de banco de dados, testes automatizados, Docker e integração contínua.
