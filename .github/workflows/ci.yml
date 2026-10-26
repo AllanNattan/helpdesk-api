@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   quality:
-    name: Ruff and pytest
+    name: Ruff, pytest and Docker build
     runs-on: ubuntu-latest
 
     env:
@@ -42,3 +42,6 @@ jobs:
 
       - name: Run tests
         run: python -m pytest
+
+      - name: Build Docker image
+        run: docker build --tag helpdesk-api:ci .
